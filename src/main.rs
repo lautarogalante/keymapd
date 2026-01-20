@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, fs};
 use evdev::{Device, EventSummary, KeyCode};
 use std::process::Command;
 
@@ -8,16 +8,32 @@ enum ValumeAction {
    Mute
 }
 
+struct DeviceProperties {
+    vid: u16,
+    pid: u16,
+}
+
 fn map_keys(mut device: Device) -> Result<(), Box<dyn Error>>{
     loop {
-        for event in device.fetch_events()?{
-            let _ = match event.destructure() {
-                EventSummary::Key(_,KeyCode::KEY_VOLUMEUP, value)  if value != 0 => execute_command(ValumeAction::VolumeUp("5%+".into())),
-                EventSummary::Key(_,KeyCode::KEY_VOLUMEDOWN, value) if value != 0 => execute_command(ValumeAction::VolumeDown("5%-".into())),
-                EventSummary::Key(_,KeyCode::KEY_MUTE, value) if value != 0 => execute_command(ValumeAction::Mute),
-               _ => Ok(())
-            };
+
+        match device.fetch_events() {
+            Ok(events) => {
+                for event in events {
+                    let _ = match event.destructure() {
+                        EventSummary::Key(_,KeyCode::KEY_VOLUMEUP, value)  if value != 0 => execute_command(ValumeAction::VolumeUp("5%+".into())),
+                        EventSummary::Key(_,KeyCode::KEY_VOLUMEDOWN, value) if value != 0 => execute_command(ValumeAction::VolumeDown("5%-".into())),
+                        EventSummary::Key(_,KeyCode::KEY_MUTE, value) if value != 0 => execute_command(ValumeAction::Mute),
+                        _ => Ok(()),
+                    };
+                };
+            },
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::NotFound || e.raw_os_error() == Some(19) {
+                    _ = init();
+                }
+            }
         }
+        
     }
 }
 
@@ -44,8 +60,34 @@ fn execute_command(value: ValumeAction) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn Error>>{
-    let device = Device::open("/dev/input/event4")?;
-    map_keys(device)?;
+fn find_device(properties: &DeviceProperties) -> Result<Vec<Device>, Box<dyn Error>> {
+
+    let paths = fs::read_dir("/dev/input")?;
+    let mut found_device: Vec<Device> = Vec::new();
+    for dir_entry in paths.flatten() {
+        let path = dir_entry.path();
+
+        if let Ok(device) = Device::open(&path) {
+            if device.input_id().vendor() == properties.vid && device.input_id().product() == properties.pid
+            {
+                found_device.push(device);
+            }
+        }
+    }
+
+    Ok(found_device)
+}
+
+fn init() -> Result<(), Box<dyn Error>> {
+    let properties = &DeviceProperties { vid: 0x1b1c, pid: 0x1bb9  };
+    let mut device_vec = find_device(properties)?;
+    if let Some(device) = device_vec.pop() {
+        map_keys(device)?;
+    }
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let _ = init();
     Ok(())
 }
