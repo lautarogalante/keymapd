@@ -2,6 +2,13 @@ use std::{error::Error, fs};
 use evdev::{Device, EventSummary, KeyCode};
 use std::process::Command;
 
+const INPUT_PATH: &str = "/dev/input";
+const UTILITY: &str = "wpctl";
+const SET_MUTE: &str = "set-mute";
+const SET_VOLUME: &str = "set-volume";
+const DEFAULT_AUDIO_SINK: &str = "@DEFAULT_AUDIO_SINK@";
+const TOGGLE: &str = "toggle";
+
 enum ValumeAction {
    VolumeUp(String),
    VolumeDown(String),
@@ -41,17 +48,17 @@ fn execute_command(value: ValumeAction) -> Result<(), Box<dyn Error>> {
     
     match  value {
        ValumeAction::Mute => {
-            Command::new("wpctl")
-                .arg("set-mute")
-                .arg("@DEFAULT_AUDIO_SINK@")
-                .arg("toggle")
+            Command::new(UTILITY)
+                .arg(SET_MUTE)
+                .arg(DEFAULT_AUDIO_SINK)
+                .arg(TOGGLE)
                 .status()
                 .expect("Failed to run command");
        }
        ValumeAction::VolumeUp(v) | ValumeAction::VolumeDown(v) => {
-            Command::new("wpctl")
-                .arg("set-volume")
-                .arg("@DEFAULT_AUDIO_SINK@")
+            Command::new(UTILITY)
+                .arg(SET_VOLUME)
+                .arg(DEFAULT_AUDIO_SINK)
                 .arg(v)
                 .status()
                 .expect("Failed to run command");
@@ -62,7 +69,7 @@ fn execute_command(value: ValumeAction) -> Result<(), Box<dyn Error>> {
 
 fn find_device(properties: &DeviceProperties) -> Result<Vec<Device>, Box<dyn Error>> {
 
-    let paths = fs::read_dir("/dev/input")?;
+    let paths = fs::read_dir(INPUT_PATH)?;
     let mut found_device: Vec<Device> = Vec::new();
     for dir_entry in paths.flatten() {
         let path = dir_entry.path();
